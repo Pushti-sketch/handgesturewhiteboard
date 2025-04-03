@@ -1,25 +1,27 @@
-from flask import Flask, render_template, Response
-from flask_socketio import SocketIO
+import streamlit as st
 import cv2
 import numpy as np
 import mediapipe as mp
 from collections import deque
-import base64
-import threading
 import time
-
-app = Flask(__name__, template_folder='.')
-socketio = SocketIO(app)
-
-# Global variables
-camera = None
-is_running = False
-drawing_thread = None
 
 # Initialize MediaPipe Hands
 mp_hands = mp.solutions.hands
 hands = mp_hands.Hands(max_num_hands=1, min_detection_confidence=0.7)
 mp_draw = mp.solutions.drawing_utils
+
+# Initialize session state
+if 'camera' not in st.session_state:
+    st.session_state.camera = None
+if 'is_running' not in st.session_state:
+    st.session_state.is_running = False
+if 'paintWindow' not in st.session_state:
+    st.session_state.paintWindow = np.zeros((471, 636, 3)) + 255
+    st.session_state.paintWindow = cv2.rectangle(st.session_state.paintWindow, (40,1), (140,65), (0,0,0), 2)
+    st.session_state.paintWindow = cv2.rectangle(st.session_state.paintWindow, (160,1), (255,65), (255,0,0), 2)
+    st.session_state.paintWindow = cv2.rectangle(st.session_state.paintWindow, (275,1), (370,65), (0,255,0), 2)
+    st.session_state.paintWindow = cv2.rectangle(st.session_state.paintWindow, (390,1), (485,65), (0,0,255), 2)
+    st.session_state.paintWindow = cv2.rectangle(st.session_state.paintWindow, (505,1), (600,65), (0,255,255), 2)
 
 # Color points
 bpoints = [deque(maxlen=1024)]
@@ -37,22 +39,52 @@ yellow_index = 0
 colors = [(255, 0, 0), (0, 255, 0), (0, 0, 255), (0, 255, 255)]
 colorIndex = 0
 
-# Initialize canvas
-paintWindow = np.zeros((471, 636, 3)) + 255
-paintWindow = cv2.rectangle(paintWindow, (40,1), (140,65), (0,0,0), 2)
-paintWindow = cv2.rectangle(paintWindow, (160,1), (255,65), (255,0,0), 2)
-paintWindow = cv2.rectangle(paintWindow, (275,1), (370,65), (0,255,0), 2)
-paintWindow = cv2.rectangle(paintWindow, (390,1), (485,65), (0,0,255), 2)
-paintWindow = cv2.rectangle(paintWindow, (505,1), (600,65), (0,255,255), 2)
+# Streamlit UI
+st.title("Air Canvas")
+st.markdown("""
+    ### How to Use:
+    1. Click "Start" to begin the air canvas
+    2. Use your index finger to draw in the air
+    3. Touch your thumb and index finger together to start drawing
+    4. Move your hand to the top of the screen to select colors:
+        - Blue (leftmost)
+        - Green
+        - Red
+        - Yellow (rightmost)
+    5. Click "Clear Canvas" to erase everything
+    6. Click "Stop" to stop the camera feed
+""")
 
-def draw_canvas():
-    global camera, is_running, paintWindow
-    
-    while is_running:
-        ret, frame = camera.read()
-        if not ret:
-            break
-            
+# Create columns for video and canvas
+col1, col2 = st.columns(2)
+
+# Add buttons
+start_button = st.button("Start")
+stop_button = st.button("Stop")
+clear_button = st.button("Clear Canvas")
+
+# Handle button clicks
+if start_button:
+    st.session_state.camera = cv2.VideoCapture(0)
+    st.session_state.is_running = True
+
+if stop_button:
+    if st.session_state.camera is not None:
+        st.session_state.camera.release()
+    st.session_state.is_running = False
+
+if clear_button:
+    st.session_state.paintWindow = np.zeros((471, 636, 3)) + 255
+    st.session_state.paintWindow = cv2.rectangle(st.session_state.paintWindow, (40,1), (140,65), (0,0,0), 2)
+    st.session_state.paintWindow = cv2.rectangle(st.session_state.paintWindow, (160,1), (255,65), (255,0,0), 2)
+    st.session_state.paintWindow = cv2.rectangle(st.session_state.paintWindow, (275,1), (370,65), (0,255,0), 2)
+    st.session_state.paintWindow = cv2.rectangle(st.session_state.paintWindow, (390,1), (485,65), (0,0,255), 2)
+    st.session_state.paintWindow = cv2.rectangle(st.session_state.paintWindow, (505,1), (600,65), (0,255,255), 2)
+
+# Main processing loop
+if st.session_state.is_running and st.session_state.camera is not None:
+    ret, frame = st.session_state.camera.read()
+    if ret:
         x, y, c = frame.shape
         frame = cv2.flip(frame, 1)
         framergb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
@@ -92,7 +124,7 @@ def draw_canvas():
                         gpoints = [deque(maxlen=512)]
                         rpoints = [deque(maxlen=512)]
                         ypoints = [deque(maxlen=512)]
-                        paintWindow[67:,:,:] = 255
+                        st.session_state.paintWindow[67:,:,:] = 255
                     elif 160 <= fore_finger[0] <= 255:
                         colorIndex = 0  # Blue
                     elif 275 <= fore_finger[0] <= 370:
@@ -110,55 +142,10 @@ def draw_canvas():
                     if points[i][j][k-1] is None or points[i][j][k] is None:
                         continue
                     cv2.line(frame, points[i][j][k-1], points[i][j][k], colors[i], 2)
-                    cv2.line(paintWindow, points[i][j][k-1], points[i][j][k], colors[i], 2)
+                    cv2.line(st.session_state.paintWindow, points[i][j][k-1], points[i][j][k], colors[i], 2)
         
-        # Convert frames to base64
-        _, buffer = cv2.imencode('.jpg', frame)
-        frame_base64 = base64.b64encode(buffer).decode('utf-8')
+        # Display frames
+        col1.image(frame, channels="BGR", use_column_width=True)
+        col2.image(st.session_state.paintWindow, channels="BGR", use_column_width=True)
         
-        _, paint_buffer = cv2.imencode('.jpg', paintWindow)
-        paint_base64 = base64.b64encode(paint_buffer).decode('utf-8')
-        
-        # Send frames to client
-        socketio.emit('video_feed', {
-            'frame': frame_base64,
-            'canvas': paint_base64
-        })
-        
-        time.sleep(0.1)
-
-@app.route('/')
-def index():
-    return render_template('index.html')
-
-@socketio.on('start')
-def handle_start():
-    global camera, is_running, drawing_thread
-    if not is_running:
-        camera = cv2.VideoCapture(0)
-        is_running = True
-        drawing_thread = threading.Thread(target=draw_canvas)
-        drawing_thread.start()
-
-@socketio.on('stop')
-def handle_stop():
-    global camera, is_running, drawing_thread
-    if is_running:
-        is_running = False
-        if drawing_thread:
-            drawing_thread.join()
-        if camera:
-            camera.release()
-
-@socketio.on('clear')
-def handle_clear():
-    global paintWindow
-    paintWindow = np.zeros((471, 636, 3)) + 255
-    paintWindow = cv2.rectangle(paintWindow, (40,1), (140,65), (0,0,0), 2)
-    paintWindow = cv2.rectangle(paintWindow, (160,1), (255,65), (255,0,0), 2)
-    paintWindow = cv2.rectangle(paintWindow, (275,1), (370,65), (0,255,0), 2)
-    paintWindow = cv2.rectangle(paintWindow, (390,1), (485,65), (0,0,255), 2)
-    paintWindow = cv2.rectangle(paintWindow, (505,1), (600,65), (0,255,255), 2)
-
-if __name__ == '__main__':
-    socketio.run(app, debug=True) 
+        time.sleep(0.1) 
