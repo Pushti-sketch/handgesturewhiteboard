@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Air Canvas</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+    <style>
+        body {
+            font-family: 'Arial', sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f0f2f5;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+        .video-container, .canvas-container {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .video-container h2, .canvas-container h2 {
+            margin-top: 0;
+            color: #333;
+        }
+        #video-feed, #canvas-feed {
+            width: 100%;
+            border-radius: 5px;
+            margin-bottom: 10px;
+        }
+        .controls {
+            display: flex;
+            gap: 10px;
+            margin-top: 20px;
+        }
+        button {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: background-color 0.3s;
+        }
+        #start-btn {
+            background-color: #4CAF50;
+            color: white;
+        }
+        #stop-btn {
+            background-color: #f44336;
+            color: white;
+        }
+        #clear-btn {
+            background-color: #2196F3;
+            color: white;
+        }
+        button:hover {
+            opacity: 0.9;
+        }
+        .instructions {
+            grid-column: 1 / -1;
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-top: 20px;
+        }
+        .instructions h3 {
+            margin-top: 0;
+            color: #333;
+        }
+        .instructions ul {
+            padding-left: 20px;
+        }
+        .instructions li {
+            margin-bottom: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="video-container">
+            <h2>Camera Feed</h2>
+            <img id="video-feed" src="" alt="Video Feed">
+        </div>
+        <div class="canvas-container">
+            <h2>Canvas</h2>
+            <img id="canvas-feed" src="" alt="Canvas Feed">
+        </div>
+        <div class="controls">
+            <button id="start-btn">Start</button>
+            <button id="stop-btn">Stop</button>
+            <button id="clear-btn">Clear Canvas</button>
+        </div>
+        <div class="instructions">
+            <h3>How to Use:</h3>
+            <ul>
+                <li>Click "Start" to begin the air canvas</li>
+                <li>Use your index finger to draw in the air</li>
+                <li>Touch your thumb and index finger together to start drawing</li>
+                <li>Move your hand to the top of the screen to select colors:
+                    <ul>
+                        <li>Blue (leftmost)</li>
+                        <li>Green</li>
+                        <li>Red</li>
+                        <li>Yellow (rightmost)</li>
+                    </ul>
+                </li>
+                <li>Click "Clear Canvas" to erase everything</li>
+                <li>Click "Stop" to stop the camera feed</li>
+            </ul>
+        </div>
+    </div>
+
+    <script>
+        const socket = io();
+        const videoFeed = document.getElementById('video-feed');
+        const canvasFeed = document.getElementById('canvas-feed');
+        const startBtn = document.getElementById('start-btn');
+        const stopBtn = document.getElementById('stop-btn');
+        const clearBtn = document.getElementById('clear-btn');
+
+        socket.on('video_feed', function(data) {
+            videoFeed.src = 'data:image/jpeg;base64,' + data.frame;
+            canvasFeed.src = 'data:image/jpeg;base64,' + data.canvas;
+        });
+
+        startBtn.addEventListener('click', function() {
+            socket.emit('start');
+            startBtn.disabled = true;
+            stopBtn.disabled = false;
+        });
+
+        stopBtn.addEventListener('click', function() {
+            socket.emit('stop');
+            startBtn.disabled = false;
+            stopBtn.disabled = true;
+        });
+
+        clearBtn.addEventListener('click', function() {
+            socket.emit('clear');
+        });
+
+        // Initial state
+        stopBtn.disabled = true;
+    </script>
+</body>
+</html> 
