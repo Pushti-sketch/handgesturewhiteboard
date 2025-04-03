@@ -1,5 +1,5 @@
-opencv-python==4.8.0.76
-numpy==1.24.3
-mediapipe==0.10.0
-flask==2.3.3
-flask-socketio==5.3.4 
+opencv-python-headless
+numpy
+mediapipe
+flask
+flask-socketio
